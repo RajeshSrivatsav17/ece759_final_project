@@ -48,3 +48,15 @@ void writetoCSV(float (&x)[XDIM][YDIM][ZDIM], const std::string& filename) {
 
     file.close();
 }
+
+float laplacian(float (&p)[XDIM][YDIM][ZDIM], int i, int j, int k) {
+    float sum = 0.0f;
+    if (i > 0)       sum += p[i-1][j][k];
+    if (i < XDIM-1)  sum += p[i+1][j][k];
+    if (j > 0)       sum += p[i][j-1][k];
+    if (j < YDIM-1)  sum += p[i][j+1][k];
+    if (k > 0)       sum += p[i][j][k-1];
+    if (k < ZDIM-1)  sum += p[i][j][k+1];
+    sum -= 6.0f * p[i][j][k];
+    return sum / (dx * dx);
+}
