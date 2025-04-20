@@ -7,6 +7,7 @@ void computeDivergence(
     float (&divergence)[XDIM][YDIM][ZDIM]
 )
 {
+    #pragma omp parallel for
     for (int i = 1; i < XDIM - 1; i++) {
         for (int j = 1; j < YDIM - 1; j++) {
             for (int k = 1; k < ZDIM - 1; k++) {

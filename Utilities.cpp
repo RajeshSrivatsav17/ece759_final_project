@@ -16,28 +16,32 @@ void Clear(float (&x)[XDIM][YDIM][ZDIM])
         x[i][j][k] = 0.;
 }
 
-void InitializeProblem(float (&x)[XDIM][YDIM][ZDIM], float (&y)[XDIM][YDIM][ZDIM]){
+void InitializeProblem(float (&x)[XDIM][YDIM][ZDIM], float (&y)[XDIM][YDIM][ZDIM],float (&z)[XDIM][YDIM][ZDIM]){
 
     // Start by zeroing out x and b
     Clear(x);
     Clear(y);
-
+    Clear(z);
     /* Set the initial conditions for the density and temperature
     Sets:
     rho = 1.0 → meaning smoke exists in that region
     T = 300.0 → this region is hotter than surrounding cells (used for buoyancy)
     */
-    for(int k = ceil(0.06*ZDIM); k < ceil(0.12*ZDIM); ++k) //6% to 12% Near the bottom of the domain
+    int Z_initial_val = ceil(0.06*ZDIM);
+    int Z_limit = ceil(0.12*ZDIM);
+    #pragma omp parallel for
+    for(int k = Z_initial_val; k < Z_limit; ++k)
         for(int j = YDIM/2-16; j < YDIM/2+16; j++)
-        for(int i = XDIM/2-16; i < XDIM/2+16; i++){
+        for(int i = XDIM/2-16; i < XDIM/2+16; i++){ //6% to 12% Near the bottom of the domain
             x[i][j][k] = 1.; //Density
             y[i][j][k] = 300.; //Temperature 
+            z[i][j][k] = 2.0f;
         }
             
 }
 
 
-void writetoCSV(float (&x)[XDIM][YDIM][ZDIM], const std::string& filename) {
+void writetoCSV(float (&x)[XDIM][YDIM][ZDIM], const std::string& filename, const std::string& ftype) {
     std::ofstream file(filename);
     file << "x,y,z,density\n";
     for (int k = 0; k < ZDIM; ++k)

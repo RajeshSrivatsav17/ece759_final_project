@@ -38,6 +38,7 @@ float trilinear_sample(const float (&field) [XDIM][YDIM][ZDIM], float x, float y
 }
 
 void semi_lagrangian_advection(float (&dst) [XDIM][YDIM][ZDIM], const float (&src) [XDIM][YDIM][ZDIM], const float (&u) [XDIM][YDIM][ZDIM], const float (&v) [XDIM][YDIM][ZDIM], const float(&w) [XDIM][YDIM][ZDIM], float dt) {
+    #pragma omp parallel for
     for (int k = 0; k < ZDIM; ++k) {
         for (int j = 0; j < YDIM; ++j) {
             for (int i = 0; i < XDIM; ++i) {
