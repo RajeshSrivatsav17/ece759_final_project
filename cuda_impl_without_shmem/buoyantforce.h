@@ -1,4 +1,4 @@
 #include <iostream>
 #include "parameters.h"
 
-void buoyantforce(float (&) [XDIM][YDIM][ZDIM],float (&) [XDIM][YDIM][ZDIM],float (&) [XDIM][YDIM][ZDIM]);
+__global__ void buoyantforce_kernel(const float* rho, const float* T, float* v);
