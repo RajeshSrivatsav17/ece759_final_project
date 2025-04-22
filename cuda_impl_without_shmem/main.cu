@@ -53,6 +53,15 @@ int main(){
     cudaMalloc((void**)&TRaw_d, totalSize*sizeof(float));
     cudaMalloc((void**)&divergenceRaw_d, totalSize*sizeof(float));
     cudaMalloc((void**)&pRaw_d, totalSize*sizeof(float));
+
+    float *uRaw_star_d, *vRaw_star_d, *wRaw_star_d;
+    float *rhoRaw_next_d, *TRaw_next_d;
+    
+    cudaMalloc((void**)&uRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&vRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&wRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&rhoRaw_next_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&TRaw_next_d, totalSize * sizeof(float));
     
     //Velocity//
     array_t u = reinterpret_cast<array_t>(*uRaw); //Velocity in x direction
@@ -89,6 +98,12 @@ int main(){
     cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize, cudaMemcpyHostToDevice);
     cudaMemcpy(pRaw_d, pRaw, totalSize, cudaMemcpyHostToDevice);
 
+    cudaMemcpy(uRaw_star_d, uRaw_star, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(vRaw_star_d, vRaw_star, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(wRaw_star_d, wRaw_star, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(rhoRaw_next_d, rhoRaw_next, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(TRaw_next_d, TRaw_next, totalSize, cudaMemcpyHostToDevice);
+
     int threadsPerBlock = 512; // 8*8*8 tile
     int blocksPerGrid = (totalSize + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -103,29 +118,29 @@ int main(){
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
         //std::cout<<"Calling semi_lag_adv() for u\n";
-        semi_lagrangian_advection(u_star, u, u, v, w, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(uRaw_star_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         //std::cout<<"Returned from semi_lag_adv() for u\n";
         //std::cout<<"Calling semi_lag_adv() for v\n";
-        semi_lagrangian_advection(v_star, v, u, v, w, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(vRaw_star_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         //std::cout<<"Returned from semi_lag_adv() for v\n";
         //std::cout<<"Calling semi_lag_adv() for w\n";
-        semi_lagrangian_advection(w_star, w, u, v, w, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(wRaw_star_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         //std::cout<<"Returned from semi_lag_adv() for w\n";
         // Step 2: Advect smoke density and temperature
         //std::cout<<"Calling semi_lag_adv() for rho\n";
-        semi_lagrangian_advection(rho_star, rho, u, v, w, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_next_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         //std::cout<<"Returned from semi_lag_adv() for rho\n";
         //std::cout<<"Calling semi_lag_adv() for Temp\n";
-        semi_lagrangian_advection(T_star, T, u, v, w, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(TRaw_next_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         //std::cout<<"Returned from semi_lag_adv() for Temp\n";
 
         // Swap buffers for next timestep
         //std::cout<<"Calling swap buffer()\n";
-        std::swap(u, u_star);
-        std::swap(v, v_star);
-        std::swap(w, w_star);
-        std::swap(rho, rho_star);
-        std::swap(T, T_star);
+        std::swap(uRaw_d, uRaw_star_d);
+        std::swap(vRaw_d, vRaw_star_d);
+        std::swap(wRaw_d, wRaw_star_d);
+        std::swap(rhoRaw_d, rhoRaw_next_d);
+        std::swap(TRaw_d, TRaw_next_d);
 
         //std::cout<<"Finished swapping\n";
         // Step 3: Divergence of velocity
