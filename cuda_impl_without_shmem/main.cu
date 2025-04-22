@@ -104,6 +104,7 @@ int main(){
         // Step 1
         //std::cout<<"Calling buoyantforce()\n";
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rho,T,v); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
+      //buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); ???? To be checked with Rajesh
         cudaDeviceSynchronize();
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
@@ -126,15 +127,17 @@ int main(){
 
         // Swap buffers for next timestep
         //std::cout<<"Calling swap buffer()\n";
-        std::swap(u, u_star);
+        /*std::swap(u, u_star);
         std::swap(v, v_star);
         std::swap(w, w_star);
         std::swap(rho, rho_star);
-        std::swap(T, T_star);
+        std::swap(T, T_star);*/
+
         //std::cout<<"Finished swapping\n";
         // Step 3: Divergence of velocity
         //std::cout<<"Calling Divergence()\n";
-        computeDivergence(u, v, w, divergence);
+        computeDivergence_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, divergenceRaw_d);
+        cudaDeviceSynchronize();
         //std::cout<<"Returned from Divergence()\n";
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
