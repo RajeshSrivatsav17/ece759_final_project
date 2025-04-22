@@ -1,4 +1,5 @@
 #include <cmath>
+#include "advect.h"
 
 __device__ float trilinear_sample(const float *field, float x, float y, float z) {
     int i = static_cast<int>(floorf(x));

@@ -11,6 +11,7 @@
 #include "cga.h"
 #include "boundary_cond.h"
 #include "cuda.h"
+#include "velocity_correction.h"
 
 int main(){
     
@@ -78,7 +79,6 @@ int main(){
     Clear(u);Clear(w);Clear(divergence);Clear(p);
     Clear(u_star);Clear(v_star);Clear(w_star);
     
-    start = high_resolution_clock::now();
     InitializeProblem(rho,T,v);
 
     cudaMemcpy(uRaw_d, uRaw, totalSize, cudaMemcpyHostToDevice);
@@ -89,7 +89,6 @@ int main(){
     cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize, cudaMemcpyHostToDevice);
     cudaMemcpy(pRaw_d, pRaw, totalSize, cudaMemcpyHostToDevice);
 
-    int totalSize = XDIM * YDIM * ZDIM;
     int threadsPerBlock = 512; // 8*8*8 tile
     int blocksPerGrid = (totalSize + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -100,7 +99,6 @@ int main(){
         // Step 1
         //std::cout<<"Calling buoyantforce()\n";
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
-      //buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); ???? To be checked with Rajesh
         cudaDeviceSynchronize();
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
@@ -123,11 +121,11 @@ int main(){
 
         // Swap buffers for next timestep
         //std::cout<<"Calling swap buffer()\n";
-        /*std::swap(u, u_star);
+        std::swap(u, u_star);
         std::swap(v, v_star);
         std::swap(w, w_star);
         std::swap(rho, rho_star);
-        std::swap(T, T_star);*/
+        std::swap(T, T_star);
 
         //std::cout<<"Finished swapping\n";
         // Step 3: Divergence of velocity
@@ -152,15 +150,14 @@ int main(){
         cudaEventRecord(stopEvent, 0);
         cudaEventSynchronize(stopEvent);
         cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
-        std::cout << "CUDA Event compute time for one frame #  " << i << " = " 
+        std::cout << "CUDA Event compute time for one frame #  " << t << " = " 
                   << elapsedTime / 1000.0f << " sec\n";        
     }
     cudaEventRecord(stopEvent_totalSteps,0);
     cudaEventSynchronize(stopEvent_totalSteps);
 
     cudaEventElapsedTime(&elapsedTime, startEvent_totalSteps, stopEvent_totalSteps);
-    std::cout << "\n\nCUDA Event compute time for " << totalSteps << " frames  " << i << " = " 
-              << elapsedTime / 1000.0f << " sec\n";  
+    std::cout << "\n\nCUDA Event compute time for " << totalSteps << " frames  " << elapsedTime / 1000.0f << " sec\n";  
     delete[] uRaw;
     delete[] vRaw;
     delete[] wRaw;

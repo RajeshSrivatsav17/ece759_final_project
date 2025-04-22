@@ -1,6 +1,4 @@
-#include <iostream>
-#include"cuda.h"
-#include"Utilities.h"
+#include "velocity_correction.h"
 
 __global__ void velocityCorrection_kernel(float* u, float* v, float* w, float* p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
