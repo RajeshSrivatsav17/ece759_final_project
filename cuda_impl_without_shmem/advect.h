@@ -1,2 +1,3 @@
 #include "parameters.h"
-void semi_lagrangian_advection(float (&dst) [XDIM][YDIM][ZDIM], const float (&src) [XDIM][YDIM][ZDIM], const float (&u) [XDIM][YDIM][ZDIM], const float (&v) [XDIM][YDIM][ZDIM], const float(&w) [XDIM][YDIM][ZDIM], float dt);
+
+__global__ void semi_lagrangian_advection_kernel(float *dst, const float *src, const float *u, const float *v, const float *w, float dt);
