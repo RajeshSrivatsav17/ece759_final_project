@@ -12,15 +12,15 @@
 #include "boundary_cond.h"
 #include "cuda.h"
 
-using std::chrono::high_resolution_clock;
-using std::chrono::duration;
-using elapsed_time_t = std::chrono::duration<double, std::milli>;
-
 int main(){
     
-    high_resolution_clock::time_point start;
-    high_resolution_clock::time_point end;
-    duration<double, std::milli> duration_sec;
+    cudaEvent_t startEvent, stopEvent;
+    cudaEvent_t startEvent_totalSteps, stopEvent_totalSteps;
+    float elapsedTime;
+    cudaEventCreate(&startEvent);
+    cudaEventCreate(&stopEvent);
+    cudaEventCreate(&startEvent_totalSteps);
+    cudaEventCreate(&stopEvent_totalSteps);
 
     size_t totalSize = XDIM * YDIM * ZDIM;
 
@@ -89,18 +89,14 @@ int main(){
     cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize, cudaMemcpyHostToDevice);
     cudaMemcpy(PRaw_d, PRaw, totalSize, cudaMemcpyHostToDevice);
 
-    end = high_resolution_clock::now();
-    duration_sec = std::chrono::duration_cast<duration<double, std::milli>>(end - start);
-    std::cout<<"Time for initializing Density Temperature and Vertical Velocity: "<<duration_sec.count()<<" ms\n";
-    
-    duration_sec = elapsed_time_t::zero();
-    start = high_resolution_clock::now();
-
     int totalSize = XDIM * YDIM * ZDIM;
     int threadsPerBlock = 512; // 8*8*8 tile
     int blocksPerGrid = (totalSize + threadsPerBlock - 1) / threadsPerBlock;
-    
+
+    cudaEventRecord(startEvent_totalSteps, 0);
+
     for (int t = 0; t < totalSteps; ++t) {
+        cudaEventRecord(startEvent, 0);
         // Step 1
         //std::cout<<"Calling buoyantforce()\n";
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rho,T,v); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
@@ -160,10 +156,18 @@ int main(){
         //std::cout<<"Returned from boundary()\n";
         //if (t % 10 == 0)
         //    writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
+        cudaEventRecord(stopEvent, 0);
+        cudaEventSynchronize(stopEvent);
+        cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
+        std::cout << "CUDA Event compute time for one frame #  " << i << " = " 
+                  << elapsedTime / 1000.0f << " sec\n";        
     }
-    end = high_resolution_clock::now();
-    duration_sec = std::chrono::duration_cast<duration<double, std::milli>>(end - start);
-    std::cout<<"Time for rendering "<<totalSteps<<" frames: "<<duration_sec.count()/1000<<" sec\n";
+    cudaEventRecord(stopEvent_totalSteps,0);
+    cudaEventSynchronize(stopEvent_totalSteps);
+
+    cudaEventElapsedTime(&elapsedTime, startEvent_totalSteps, stopEvent_totalSteps);
+    std::cout << "\n\nCUDA Event compute time for " << totalSteps << " frames  " << i << " = " 
+              << elapsedTime / 1000.0f << " sec\n";  
     delete[] uRaw;
     delete[] vRaw;
     delete[] wRaw;
