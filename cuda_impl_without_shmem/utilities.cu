@@ -9,7 +9,6 @@
 
 void Clear(float (&x)[XDIM][YDIM][ZDIM])
 {
-#pragma omp parallel for
     for (int i = 0; i < XDIM; i++)
     for (int j = 0; j < YDIM; j++)
     for (int k = 0; k < ZDIM; k++)
@@ -29,7 +28,6 @@ void InitializeProblem(float (&x)[XDIM][YDIM][ZDIM], float (&y)[XDIM][YDIM][ZDIM
     */
     int Z_initial_val = ceil(0.06*ZDIM);
     int Z_limit = ceil(0.12*ZDIM);
-    #pragma omp parallel for
     for(int k = Z_initial_val; k < Z_limit; ++k)
         for(int j = YDIM/2-16; j < YDIM/2+16; j++)
         for(int i = XDIM/2-16; i < XDIM/2+16; i++){ //6% to 12% Near the bottom of the domain

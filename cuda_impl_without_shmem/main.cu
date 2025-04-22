@@ -31,7 +31,7 @@ int main(){
     float *rhoRaw = new float [totalSize]; //Density
     float *TRaw = new float [totalSize]; //Temperature
     float *divergenceRaw = new float [totalSize]; //Divergence
-    float *PRaw = new float [totalSize]; //Pressure
+    float *pRaw = new float [totalSize]; //Pressure
 
     float* uRaw_star = new float[totalSize];
     float* vRaw_star = new float[totalSize];
@@ -42,7 +42,7 @@ int main(){
 
     float *uRaw_d, *vRaw_d, *wRaw_d;             // Velocity components
     float *rhoRaw_d, *TRaw_d;                    // Density and Temperature
-    float *divergenceRaw_d, *PRaw_d;             // Divergence and Pressure
+    float *divergenceRaw_d, *pRaw_d;             // Divergence and Pressure
     
     // Allocate on device
     cudaMalloc((void**)&uRaw_d, totalSize*sizeof(float));
@@ -51,7 +51,7 @@ int main(){
     cudaMalloc((void**)&rhoRaw_d, totalSize*sizeof(float));
     cudaMalloc((void**)&TRaw_d, totalSize*sizeof(float));
     cudaMalloc((void**)&divergenceRaw_d, totalSize*sizeof(float));
-    cudaMalloc((void**)&PRaw_d, totalSize*sizeof(float));
+    cudaMalloc((void**)&pRaw_d, totalSize*sizeof(float));
     
     //Velocity//
     array_t u = reinterpret_cast<array_t>(*uRaw); //Velocity in x direction
@@ -64,7 +64,7 @@ int main(){
     //Divergence// 
     array_t divergence = reinterpret_cast<array_t>(*divergenceRaw);
     //Pressure//
-    array_t p = reinterpret_cast<array_t>(*PRaw);
+    array_t p = reinterpret_cast<array_t>(*pRaw);
 
     //Advection Velocity//
     array_t u_star = reinterpret_cast<array_t>(*uRaw_star); //Velocity in x direction
@@ -87,7 +87,7 @@ int main(){
     cudaMemcpy(rhoRaw_d, rhoRaw, totalSize, cudaMemcpyHostToDevice);
     cudaMemcpy(TRaw_d, TRaw, totalSize, cudaMemcpyHostToDevice);
     cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(PRaw_d, PRaw, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(pRaw_d, pRaw, totalSize, cudaMemcpyHostToDevice);
 
     int totalSize = XDIM * YDIM * ZDIM;
     int threadsPerBlock = 512; // 8*8*8 tile
@@ -99,7 +99,7 @@ int main(){
         cudaEventRecord(startEvent, 0);
         // Step 1
         //std::cout<<"Calling buoyantforce()\n";
-        buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rho,T,v); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
+        buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
       //buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); ???? To be checked with Rajesh
         cudaDeviceSynchronize();
         //std::cout<<"Returned from buoyantforce()\n";
@@ -141,14 +141,7 @@ int main(){
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
-        #pragma omp parallel for
-        for (int i = 1; i < XDIM-1; ++i)
-        for (int j = 1; j < YDIM-1; ++j)
-        for (int k = 1; k < ZDIM-1; ++k){
-            u[i][j][k] -= (p[i+1][j][k] - p[i-1][j][k]) / (2.0f * dx);
-            v[i][j][k] -= (p[i][j+1][k] - p[i][j-1][k]) / (2.0f * dx);
-            w[i][j][k] -= (p[i][j][k+1] - p[i][j][k-1]) / (2.0f * dx);
-        }
+        velocityCorrection_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, pRaw_d);
         //std::cout<<"Velocity Correction done\n";
         // Step 6: Boundary Condition
         //std::cout<<"Calling boundary()\n";
@@ -174,7 +167,7 @@ int main(){
     delete[] rhoRaw;
     delete[] TRaw;
     delete[] divergenceRaw;
-    delete[] PRaw;
+    delete[] pRaw;
 
     return 0;
 }
