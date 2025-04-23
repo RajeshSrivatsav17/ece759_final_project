@@ -181,5 +181,26 @@ int main(){
     delete[] divergenceRaw;
     delete[] pRaw;
 
+    // Free device memory
+    cudaFree(uRaw_d);
+    cudaFree(vRaw_d);
+    cudaFree(wRaw_d);
+    cudaFree(rhoRaw_d);
+    cudaFree(TRaw_d);
+    cudaFree(divergenceRaw_d);
+    cudaFree(pRaw_d);
+    cudaFree(uRaw_star_d);
+    cudaFree(vRaw_star_d);
+    cudaFree(wRaw_star_d);
+    cudaFree(rhoRaw_next_d);
+    cudaFree(TRaw_next_d);
+
+    cudaEventDestroy(startEvent);
+    cudaEventDestroy(stopEvent);
+    cudaEventDestroy(startEvent_totalSteps);
+    cudaEventDestroy(stopEvent_totalSteps);
+
+    cudaDeviceReset(); 
+
     return 0;
 }
