@@ -109,7 +109,7 @@ int main(){
 
     cudaEventRecord(startEvent_totalSteps, 0);
 
-    int totalSteps = 1;
+    totalSteps = 1;
     for (int t = 0; t < totalSteps; ++t) {
         cudaEventRecord(startEvent, 0);
         // Step 1
@@ -152,10 +152,6 @@ int main(){
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
         solvePressureCG(pRaw_d, divergenceRaw_d);
-        
-        // display pRaw_d values for debugging
-        
-
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
