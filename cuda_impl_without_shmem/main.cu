@@ -90,25 +90,26 @@ int main(){
     
     InitializeProblem(rho,T,v);
 
-    cudaMemcpy(uRaw_d, uRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(vRaw_d, vRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(wRaw_d, wRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(rhoRaw_d, rhoRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(TRaw_d, TRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(pRaw_d, pRaw, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(uRaw_d, uRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(vRaw_d, vRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(wRaw_d, wRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(rhoRaw_d, rhoRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(TRaw_d, TRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(divergenceRaw_d, divergenceRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(pRaw_d, pRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
 
-    cudaMemcpy(uRaw_star_d, uRaw_star, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(vRaw_star_d, vRaw_star, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(wRaw_star_d, wRaw_star, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(rhoRaw_next_d, rhoRaw_next, totalSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(TRaw_next_d, TRaw_next, totalSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(uRaw_star_d, uRaw_star, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(vRaw_star_d, vRaw_star, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(wRaw_star_d, wRaw_star, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(rhoRaw_next_d, rhoRaw_next, totalSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(TRaw_next_d, TRaw_next, totalSize * sizeof(float), cudaMemcpyHostToDevice);
 
     int threadsPerBlock = 512; // 8*8*8 tile
     int blocksPerGrid = (totalSize + threadsPerBlock - 1) / threadsPerBlock;
 
     cudaEventRecord(startEvent_totalSteps, 0);
 
+    int totalSteps = 1;
     for (int t = 0; t < totalSteps; ++t) {
         cudaEventRecord(startEvent, 0);
         // Step 1
@@ -151,6 +152,10 @@ int main(){
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
         solvePressureCG(pRaw_d, divergenceRaw_d);
+        
+        // display pRaw_d values for debugging
+        
+
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
@@ -161,7 +166,7 @@ int main(){
         applyBoundaryConditions(uRaw_d,vRaw_d,wRaw_d);
         //std::cout<<"Returned from boundary()\n";
         //if (t % 10 == 0)
-        //    writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
+        writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
         cudaEventRecord(stopEvent, 0);
         cudaEventSynchronize(stopEvent);
         cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
