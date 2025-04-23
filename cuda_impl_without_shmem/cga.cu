@@ -1,78 +1,79 @@
 #include "cga.cuh"
 #include <cuda_runtime.h>
 #include <iostream>
+#include "parameters.h"
 
 // Kernel to compute q = A * d (Laplacian operation)
-__global__ void laplacian_cuda(float* q, const float* d, int xdim, int ydim, int zdim) {
+__global__ void laplacian_cuda_kernel(float* q, const float* d) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (i > 0 && i < xdim - 1 && j > 0 && j < ydim - 1 && k > 0 && k < zdim - 1) {
-        int idx = i * ydim * zdim + j * zdim + k;
-        q[idx] = d[(i + 1) * ydim * zdim + j * zdim + k] +
-                 d[(i - 1) * ydim * zdim + j * zdim + k] +
-                 d[i * ydim * zdim + (j + 1) * zdim + k] +
-                 d[i * ydim * zdim + (j - 1) * zdim + k] +
-                 d[i * ydim * zdim + j * zdim + (k + 1)] +
-                 d[i * ydim * zdim + j * zdim + (k - 1)] -
+    if (i > 0 && i < XDIM - 1 && j > 0 && j < YDIM - 1 && k > 0 && k < ZDIM - 1) {
+        int idx = i * YDIM * ZDIM + j * ZDIM + k;
+        q[idx] = d[(i + 1) * YDIM * ZDIM + j * ZDIM + k] +
+                 d[(i - 1) * YDIM * ZDIM + j * ZDIM + k] +
+                 d[i * YDIM * ZDIM + (j + 1) * ZDIM + k] +
+                 d[i * YDIM * ZDIM + (j - 1) * ZDIM + k] +
+                 d[i * YDIM * ZDIM + j * ZDIM + (k + 1)] +
+                 d[i * YDIM * ZDIM + j * ZDIM + (k - 1)] -
                  6.0f * d[idx];
     }
 }
 
 // Kernel to initialize pressure field
-__global__ void initialize_pressure(float* p, int xdim, int ydim, int zdim) {
+__global__ void initialize_pressure(float* p) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (i < xdim && j < ydim && k < zdim) {
-        int idx = i * ydim * zdim + j * zdim + k;
+    if (i < XDIM && j < YDIM && k < ZDIM) {
+        int idx = i * YDIM * ZDIM + j * ZDIM + k;
         p[idx] = 0.0f;
     }
 }
 
 // Kernel to compute the residual r = b - A*p
-__global__ void compute_residual(float* r, const float* b, const float* p, int xdim, int ydim, int zdim) {
+__global__ void compute_residual_kernel(float* r, const float* b, const float* p) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (i < xdim && j < ydim && k < zdim) {
-        int idx = i * ydim * zdim + j * zdim + k;
+    if (i < XDIM && j < YDIM && k < ZDIM) {
+        int idx = i * YDIM * ZDIM + j * ZDIM + k;
         r[idx] = b[idx];  // Since p is initialized to 0, r = b - A*p simplifies to r = b
     }
 }
 
 // Kernel to update pressure and residual
-__global__ void update_pressure_and_residual(
-    float* p, float* r, const float* d, const float* q, float alpha, int xdim, int ydim, int zdim) {
+__global__ void update_pressure_and_residual_kernel(
+    float* p, float* r, const float* d, const float* q, float alpha) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (i < xdim && j < ydim && k < zdim) {
-        int idx = i * ydim * zdim + j * zdim + k;
+    if (i < XDIM && j < YDIM && k < ZDIM) {
+        int idx = i * YDIM * ZDIM + j * ZDIM + k;
         p[idx] += alpha * d[idx];
         r[idx] -= alpha * q[idx];
     }
 }
 
 // Kernel to update the search direction d = r + beta * d
-__global__ void update_search_direction(
-    float* d, const float* r, float beta, int xdim, int ydim, int zdim) {
+__global__ void update_search_direction_kernel(
+    float* d, const float* r, float beta) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
     int k = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (i < xdim && j < ydim && k < zdim) {
-        int idx = i * ydim * zdim + j * zdim + k;
+    if (i < XDIM && j < YDIM && k < ZDIM) {
+        int idx = i * YDIM * ZDIM + j * ZDIM + k;
         d[idx] = r[idx] + beta * d[idx];
     }
 }
 
 // Reduction kernel to compute dot product
-__global__ void dot_product(const float* a, const float* b, float* result, int size) {
+__global__ void dot_product_kernel(const float* a, const float* b, float* result, int size) {
     __shared__ float cache[256];
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int cacheIdx = threadIdx.x;
@@ -105,7 +106,7 @@ __global__ void dot_product(const float* a, const float* b, float* result, int s
 // Main CG solver function
 void solvePressureCG(
     float* d_p, float* d_b) {
-    int totalSize = xdim * ydim * zdim;
+    int totalSize = XDIM * YDIM * ZDIM;
 
     // Allocate device memory
     float *d_r, *d_d, *d_q, *d_delta_new, *d_delta_old, *d_dq;
@@ -122,28 +123,28 @@ void solvePressureCG(
     cudaMemset(d_p, 0, totalSize * sizeof(float));  // Initialize p to 0
 
     dim3 blockDim(8, 8, 8);
-    dim3 gridDim((xdim + blockDim.x - 1) / blockDim.x,
-                 (ydim + blockDim.y - 1) / blockDim.y,
-                 (zdim + blockDim.z - 1) / blockDim.z);
+    dim3 gridDim((XDIM + blockDim.x - 1) / blockDim.x,
+                 (YDIM + blockDim.y - 1) / blockDim.y,
+                 (ZDIM + blockDim.z - 1) / blockDim.z);
 
     // Initialize residual r = b
-    compute_residual<<<gridDim, blockDim>>>(d_r, d_b, d_p, xdim, ydim, zdim);
+    compute_residual_kernel<<<gridDim, blockDim>>>(d_r, d_b, d_p);
     cudaMemcpy(d_d, d_r, totalSize * sizeof(float), cudaMemcpyDeviceToDevice);
 
     float delta_new = 0.0f, delta_old = 0.0f;
 
     // Compute initial delta_new = dot(r, r)
     cudaMemset(d_delta_new, 0, sizeof(float));
-    dot_product<<<gridDim.x, 256>>>(d_r, d_r, d_delta_new, totalSize);
+    dot_product_kernel<<<gridDim.x, 256>>>(d_r, d_r, d_delta_new, totalSize);
     cudaMemcpy(&delta_new, d_delta_new, sizeof(float), cudaMemcpyDeviceToHost);
 
-    for (int iter = 0; iter < maxIterations && delta_new > tolerance * tolerance; ++iter) {
+    for (int iter = 0; iter < cg_max_iterations && delta_new > cg_tolerance * cg_tolerance; ++iter) {
         // Compute q = A * d (Laplacian operation)
-        laplacian_cuda<<<gridDim, blockDim>>>(d_q, d_d, xdim, ydim, zdim);
+        laplacian_cuda_kernel<<<gridDim, blockDim>>>(d_q, d_d);
 
         // Compute dq = dot(d, q)
         cudaMemset(d_dq, 0, sizeof(float));
-        dot_product<<<gridDim.x, 256>>>(d_d, d_q, d_dq, totalSize);
+        dot_product_kernel<<<gridDim.x, 256>>>(d_d, d_q, d_dq, totalSize);
         float dq;
         cudaMemcpy(&dq, d_dq, sizeof(float), cudaMemcpyDeviceToHost);
 
@@ -151,21 +152,21 @@ void solvePressureCG(
         float alpha = delta_new / dq;
 
         // Update p and r
-        update_pressure_and_residual<<<gridDim, blockDim>>>(d_p, d_r, d_d, d_q, alpha, xdim, ydim, zdim);
+        update_pressure_and_residual_kernel<<<gridDim, blockDim>>>(d_p, d_r, d_d, d_q, alpha);
 
         // Compute new delta_new = dot(r, r)
         cudaMemset(d_delta_new, 0, sizeof(float));
-        dot_product<<<gridDim.x, 256>>>(d_r, d_r, d_delta_new, totalSize);
+        dot_product_kernel<<<gridDim.x, 256>>>(d_r, d_r, d_delta_new, totalSize);
         cudaMemcpy(&delta_new, d_delta_new, sizeof(float), cudaMemcpyDeviceToHost);
 
         // Check for convergence
-        if (delta_new < tolerance * tolerance) 
+        if (delta_new < cg_tolerance * cg_tolerance) 
             break;
 
         float beta = delta_new / delta_old;
 
         // Update search direction d
-        update_search_direction<<<gridDim, blockDim>>>(d_d, d_r, beta, xdim, ydim, zdim);
+        update_search_direction_kernel<<<gridDim, blockDim>>>(d_d, d_r, beta);
 
         delta_old = delta_new;
     }

@@ -8,7 +8,7 @@
 #include "buoyantforce.h"
 #include "advect.h"
 #include "divergence.h"
-#include "cga.h"
+#include "cga.cuh"
 #include "boundary_cond.h"
 #include "cuda.h"
 #include "velocity_correction.h"
@@ -158,7 +158,7 @@ int main(){
         //std::cout<<"Velocity Correction done\n";
         // Step 6: Boundary Condition
         //std::cout<<"Calling boundary()\n";
-        applyBoundaryConditions(u,v,w);
+        applyBoundaryConditions(uRaw_d,vRaw_d,wRaw_d);
         //std::cout<<"Returned from boundary()\n";
         //if (t % 10 == 0)
         //    writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
