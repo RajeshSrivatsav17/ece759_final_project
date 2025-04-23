@@ -137,8 +137,9 @@ void solvePressureCG(
     cudaMemset(d_delta_new, 0, sizeof(float));
     dot_product_kernel<<<gridDim.x, 256>>>(d_r, d_r, d_delta_new, totalSize);
     cudaMemcpy(&delta_new, d_delta_new, sizeof(float), cudaMemcpyDeviceToHost);
-
+    
     for (int iter = 0; iter < cg_max_iterations && delta_new > cg_tolerance * cg_tolerance; ++iter) {
+        delta_old = delta_new;
         // Compute q = A * d (Laplacian operation)
         laplacian_cuda_kernel<<<gridDim, blockDim>>>(d_q, d_d);
 
@@ -168,7 +169,7 @@ void solvePressureCG(
         // Update search direction d
         update_search_direction_kernel<<<gridDim, blockDim>>>(d_d, d_r, beta);
 
-        delta_old = delta_new;
+        // delta_old = delta_new;
     }
 
     // Copy result back to host
