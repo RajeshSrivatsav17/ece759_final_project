@@ -150,7 +150,7 @@ int main(){
         //std::cout<<"Returned from Divergence()\n";
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
-        solvePressureCG(p, divergence);
+        solvePressureCG(pRaw_d, divergenceRaw_d);
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
