@@ -1,3 +1,5 @@
+#pragma once
+
 #define XDIM 128
 #define YDIM 128
 #define ZDIM 128

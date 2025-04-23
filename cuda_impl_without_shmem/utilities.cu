@@ -64,20 +64,3 @@ float laplacian(float (&p)[XDIM][YDIM][ZDIM], int i, int j, int k) {
 }
 
 
-// Kernel to compute q = A * d (Laplacian operation)
-__global__ void laplacian_cuda(float* q, const float* d, int xdim, int ydim, int zdim) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z;
-
-    if (i > 0 && i < xdim - 1 && j > 0 && j < ydim - 1 && k > 0 && k < zdim - 1) {
-        int idx = i * ydim * zdim + j * zdim + k;
-        q[idx] = d[(i + 1) * ydim * zdim + j * zdim + k] +
-                 d[(i - 1) * ydim * zdim + j * zdim + k] +
-                 d[i * ydim * zdim + (j + 1) * zdim + k] +
-                 d[i * ydim * zdim + (j - 1) * zdim + k] +
-                 d[i * ydim * zdim + j * zdim + (k + 1)] +
-                 d[i * ydim * zdim + j * zdim + (k - 1)] -
-                 6.0f * d[idx];
-    }
-}
