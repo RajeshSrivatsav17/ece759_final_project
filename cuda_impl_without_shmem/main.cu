@@ -24,14 +24,27 @@ void buoyantforce(float (&rho) [XDIM][YDIM][ZDIM],float (&T) [XDIM][YDIM][ZDIM],
             }
         }
 }
-void MatrixMaxDifference(const float* A, const float* B,const int n)
+void MatrixMaxDifference(float* compare, const float* A, const float* B,const int n)
 {
     float result = 0.;
+    cudaMemcpy(compare, A, n * sizeof(float), cudaMemcpyDeviceToHost);
     for (int i = 0; i < n; i++)
-    for (int j = 0; j < n; j++)
-        result = std::max( result, std::abs( A[i*n+j] - B[i*n+j] ) );
+        result = std::max( result, std::abs( compare[i] - B[i] ) );
     std::cout << "Discrepancy between two methods : " << result << std::endl;
 }
+
+void compareResults(float * compare, const float* u,const float* v,const float* w,
+                    const float* rho, const float* T,
+                    const float* uRaw_d, const float* vRaw_d,const float* wRaw_d,
+                    const float* rhoRaw_d,const float* TRaw_d, int totalsize){
+    float result = 0.;
+    MatrixMaxDifference(compare, uRaw_d, u, totalSize);
+    MatrixMaxDifference(compare, vRaw_d, v, totalSize);
+    MatrixMaxDifference(compare, wRaw_d, w, totalSize);
+    MatrixMaxDifference(compare, rhoRaw_d, rho, totalSize);
+    MatrixMaxDifference(compare, TRaw_d, T, totalSize);
+}
+
 int main(){
     
     cudaEvent_t startEvent, stopEvent;
@@ -136,73 +149,82 @@ int main(){
         buoyantforce(rho,T,v);
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
         cudaDeviceSynchronize();
-        cudaMemcpy(compare, vRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
-        MaxDifference(compare,v,totalSize);
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
         //std::cout<<"Calling semi_lag_adv() for u\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(uRaw_star_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for u\n";
         //std::cout<<"Calling semi_lag_adv() for v\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(vRaw_star_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for v\n";
         //std::cout<<"Calling semi_lag_adv() for w\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(wRaw_star_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for w\n";
         // Step 2: Advect smoke density and temperature
         //std::cout<<"Calling semi_lag_adv() for rho\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_next_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for rho\n";
         //std::cout<<"Calling semi_lag_adv() for Temp\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(TRaw_next_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for Temp\n";
 
         // Swap buffers for next timestep
         //std::cout<<"Calling swap buffer()\n";
         std::swap(uRaw_d, uRaw_star_d);
         cudaDeviceSynchronize();
-	std::swap(vRaw_d, vRaw_star_d);
+	    std::swap(vRaw_d, vRaw_star_d);
         cudaDeviceSynchronize();
         std::swap(wRaw_d, wRaw_star_d);
         cudaDeviceSynchronize();
-	std::swap(rhoRaw_d, rhoRaw_next_d);
+	    std::swap(rhoRaw_d, rhoRaw_next_d);
         cudaDeviceSynchronize();
-	std::swap(TRaw_d, TRaw_next_d);
-	cudaDeviceSynchronize();
+	    std::swap(TRaw_d, TRaw_next_d);
+	    cudaDeviceSynchronize();
         //std::cout<<"Finished swapping\n";
         // Step 3: Divergence of velocity
         //std::cout<<"Calling Divergence()\n";
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
         computeDivergence_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, divergenceRaw_d);
         cudaDeviceSynchronize();
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
         //std::cout<<"Returned from Divergence()\n";
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
         solvePressureCG(pRaw_d, divergenceRaw_d);
         cudaDeviceSynchronize();
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
         velocityCorrection_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, pRaw_d);
         cudaDeviceSynchronize();        
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Velocity Correction done\n";
         // Step 6: Boundary Condition
         //std::cout<<"Calling boundary()\n";
         applyBoundaryConditions(uRaw_d,vRaw_d,wRaw_d);
         cudaDeviceSynchronize();        
+        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from boundary()\n";
         cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
-	if (t % 10 == 0)
-            writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
+        if (t % 10 == 0)
+                writetoCSV(rho, "density_frame_" + std::to_string(t) + ".csv","density");
         cudaEventRecord(stopEvent, 0);
         cudaEventSynchronize(stopEvent);
         cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
         std::cout << "CUDA Event compute time for one frame #  " << t << " = " 
-                  << elapsedTime / 1000.0f << " sec\n";        
+                  << elapsedTime / 1000.0f << " sec\n";
     }
     cudaEventRecord(stopEvent_totalSteps,0);
     cudaEventSynchronize(stopEvent_totalSteps);

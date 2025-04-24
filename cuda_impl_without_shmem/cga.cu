@@ -87,7 +87,7 @@ void solvePressureCG(float* d_p, float* d_b) {
     cudaMalloc(&d_dot_new, sizeof(float));
     cudaMalloc(&d_dq, sizeof(float));
 
-    dim3 blockSize(256);
+    dim3 blockSize(512);
     dim3 gridSize((N + blockSize.x - 1) / blockSize.x);
 
     initialize_kernel<<<gridSize, blockSize>>>(d_p, d_r, d_d, d_b);
