@@ -13,6 +13,25 @@
 #include "cuda.h"
 #include "velocity_correction.h"
 
+void buoyantforce(float (&rho) [XDIM][YDIM][ZDIM],float (&T) [XDIM][YDIM][ZDIM],float (&v) [XDIM][YDIM][ZDIM]){
+        #pragma omp parallel for
+        for(int i = 0; i < XDIM; i++){
+            for(int j = 0; j < YDIM; j++){
+                for(int k = 0; k < ZDIM; k++){
+                    double buoy_force = alpha * rho[i][j][k] * beta * (T[i][j][k] - T_ambient);
+                    v[i][j][k] += buoy_force*dt;
+                }
+            }
+        }
+}
+void MatrixMaxDifference(const float* A, const float* B,const int n)
+{
+    float result = 0.;
+    for (int i = 0; i < n; i++)
+    for (int j = 0; j < n; j++)
+        result = std::max( result, std::abs( A[i*n+j] - B[i*n+j] ) );
+    std::cout << "Discrepancy between two methods : " << result << std::endl;
+}
 int main(){
     
     cudaEvent_t startEvent, stopEvent;
@@ -33,6 +52,7 @@ int main(){
     float *TRaw = new float [totalSize]; //Temperature
     float *divergenceRaw = new float [totalSize]; //Divergence
     float *pRaw = new float [totalSize]; //Pressure
+    float *compare = new float [totalSize];
 
     float* uRaw_star = new float[totalSize];
     float* vRaw_star = new float[totalSize];
@@ -113,8 +133,11 @@ int main(){
         cudaEventRecord(startEvent, 0);
         // Step 1
         //std::cout<<"Calling buoyantforce()\n";
+        buoyantforce(rho,T,v);
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
         cudaDeviceSynchronize();
+        cudaMemcpy(compare, vRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
+        MaxDifference(compare,v,totalSize);
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
         //std::cout<<"Calling semi_lag_adv() for u\n";
