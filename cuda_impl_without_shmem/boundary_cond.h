@@ -7,6 +7,6 @@ __global__ void applyBoundaryConditionsX(float* u);
 __global__ void applyBoundaryConditionsY(float* v);
 __global__ void applyBoundaryConditionsZ(float* w);
 
-void applyBoundaryConditions(float* u, float* v, float* w);
+void applyBoundaryConditions_kernel(float* u, float* v, float* w);
 
 #endif

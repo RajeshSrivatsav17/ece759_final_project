@@ -12,37 +12,27 @@
 #include "boundary_cond.h"
 #include "cuda.h"
 #include "velocity_correction.h"
+#include "cpu_functions.cpp"
 
-void buoyantforce(float (&rho) [XDIM][YDIM][ZDIM],float (&T) [XDIM][YDIM][ZDIM],float (&v) [XDIM][YDIM][ZDIM]){
-        #pragma omp parallel for
-        for(int i = 0; i < XDIM; i++){
-            for(int j = 0; j < YDIM; j++){
-                for(int k = 0; k < ZDIM; k++){
-                    double buoy_force = alpha * rho[i][j][k] * beta * (T[i][j][k] - T_ambient);
-                    v[i][j][k] += buoy_force*dt;
-                }
-            }
-        }
-}
-void MatrixMaxDifference(float* compare, const float* A, const float* B,const int n)
+void MatrixMaxDifference(float* compare, const float* A, const float* B,const int n,const char* variable, const char * kernel , int iter)
 {
     float result = 0.;
     cudaMemcpy(compare, A, n * sizeof(float), cudaMemcpyDeviceToHost);
     for (int i = 0; i < n; i++)
         result = std::max( result, std::abs( compare[i] - B[i] ) );
-    std::cout << "Discrepancy between two methods : " << result << std::endl;
+    std::cout << "Total discrepancy " << variable << " in kernel " << kernel << " in iter " << iter << ": " << result << std::endl;
 }
 
 void compareResults(float * compare, const float* u,const float* v,const float* w,
                     const float* rho, const float* T,
                     const float* uRaw_d, const float* vRaw_d,const float* wRaw_d,
-                    const float* rhoRaw_d,const float* TRaw_d, int totalsize){
+                    const float* rhoRaw_d,const float* TRaw_d, int totalSize, const char * kernel ,int i){
     float result = 0.;
-    MatrixMaxDifference(compare, uRaw_d, u, totalSize);
-    MatrixMaxDifference(compare, vRaw_d, v, totalSize);
-    MatrixMaxDifference(compare, wRaw_d, w, totalSize);
-    MatrixMaxDifference(compare, rhoRaw_d, rho, totalSize);
-    MatrixMaxDifference(compare, TRaw_d, T, totalSize);
+    MatrixMaxDifference(compare, uRaw_d, u, totalSize, "U", kernel, i);
+    MatrixMaxDifference(compare, vRaw_d, v, totalSize, "V", kernel, i);
+    MatrixMaxDifference(compare, wRaw_d, w, totalSize, "W", kernel, i);
+    MatrixMaxDifference(compare, rhoRaw_d, rho, totalSize, "Rho", kernel, i);
+    MatrixMaxDifference(compare, TRaw_d, T, totalSize, "T", kernel, i);
 }
 
 int main(){
@@ -149,38 +139,56 @@ int main(){
         buoyantforce(rho,T,v);
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_d,TRaw_d,vRaw_d); //applying buoyant force on pressure and temperature of smoke from vertical velocity compoenent
         cudaDeviceSynchronize();
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize, "buoyantforce_kernel", t);
         //std::cout<<"Returned from buoyantforce()\n";
         // Step 2: Advect velocity (u*, v*, w*)
         //std::cout<<"Calling semi_lag_adv() for u\n";
+        semi_lagrangian_advection(u_star, u, u, v, w, dt);
+        //std::cout<<"Returned from semi_lag_adv() for u\n";
+        //std::cout<<"Calling semi_lag_adv() for v\n";
+        semi_lagrangian_advection(v_star, v, u, v, w, dt);
+        //std::cout<<"Returned from semi_lag_adv() for v\n";
+        //std::cout<<"Calling semi_lag_adv() for w\n";
+        semi_lagrangian_advection(w_star, w, u, v, w, dt);
+        //std::cout<<"Returned from semi_lag_adv() for w\n";
+        // Step 2: Advect smoke density and temperature
+        //std::cout<<"Calling semi_lag_adv() for rho\n";
+        semi_lagrangian_advection(rho_star, rho, u, v, w, dt);
+        //std::cout<<"Returned from semi_lag_adv() for rho\n";
+        //std::cout<<"Calling semi_lag_adv() for Temp\n";
+        semi_lagrangian_advection(T_star, T, u, v, w, dt);
+        //std::cout<<"Returned from semi_lag_adv() for Temp\n";
+
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(uRaw_star_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for u\n";
         //std::cout<<"Calling semi_lag_adv() for v\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(vRaw_star_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for v\n";
         //std::cout<<"Calling semi_lag_adv() for w\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(wRaw_star_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for w\n";
         // Step 2: Advect smoke density and temperature
         //std::cout<<"Calling semi_lag_adv() for rho\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(rhoRaw_next_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
 	//std::cout<<"Returned from semi_lag_adv() for rho\n";
         //std::cout<<"Calling semi_lag_adv() for Temp\n";
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock>>>(TRaw_next_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
         cudaDeviceSynchronize();        
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"semi_lagrangian_advection_kernel",t);
 	//std::cout<<"Returned from semi_lag_adv() for Temp\n";
 
         // Swap buffers for next timestep
         //std::cout<<"Calling swap buffer()\n";
+        std::swap(u, u_star);
+        std::swap(v, v_star);
+        std::swap(w, w_star);
+        std::swap(rho, rho_star);
+        std::swap(T, T_star);
+
         std::swap(uRaw_d, uRaw_star_d);
         cudaDeviceSynchronize();
 	    std::swap(vRaw_d, vRaw_star_d);
@@ -194,28 +202,38 @@ int main(){
         //std::cout<<"Finished swapping\n";
         // Step 3: Divergence of velocity
         //std::cout<<"Calling Divergence()\n";
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"swap",t);
+        computeDivergence(u, v, w, divergence);
         computeDivergence_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, divergenceRaw_d);
         cudaDeviceSynchronize();
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"computeDivergence_kernel",t);
         //std::cout<<"Returned from Divergence()\n";
         // Step 4: Iterative solver
         //std::cout<<"Calling CG()\n";
-        solvePressureCG(pRaw_d, divergenceRaw_d);
+        solvePressureCG(p, divergence);
+        solvePressureCG_kernel(pRaw_d, divergenceRaw_d);
         cudaDeviceSynchronize();
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"solvePressureCG", t);
         //std::cout<<"Returned from CG()\n";
         // Step 5: Velocity correction
         //std::cout<<"Velocity correction initiated()\n";
+        for (int i = 1; i < XDIM-1; ++i)
+        for (int j = 1; j < YDIM-1; ++j)
+        for (int k = 1; k < ZDIM-1; ++k){
+            u[i][j][k] -= (p[i+1][j][k] - p[i-1][j][k]) / (2.0f * dx);
+            v[i][j][k] -= (p[i][j+1][k] - p[i][j-1][k]) / (2.0f * dx);
+            w[i][j][k] -= (p[i][j][k+1] - p[i][j][k-1]) / (2.0f * dx);
+        } 
         velocityCorrection_kernel<<<blocksPerGrid,threadsPerBlock>>>(uRaw_d, vRaw_d, wRaw_d, pRaw_d);
         cudaDeviceSynchronize();        
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"velocityCorrection_kernel", t);
 	//std::cout<<"Velocity Correction done\n";
         // Step 6: Boundary Condition
         //std::cout<<"Calling boundary()\n";
-        applyBoundaryConditions(uRaw_d,vRaw_d,wRaw_d);
+        applyBoundaryConditions(u,v,w);
+        applyBoundaryConditions_kernel(uRaw_d,vRaw_d,wRaw_d);
         cudaDeviceSynchronize();        
-        compareResults(compare,u,v,w,rho,T,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalsize);
+        compareResults(compare,uRaw,vRaw,wRaw,rhoRaw,TRaw,uRaw_d, vRaw_d,wRaw_d,rhoRaw_d,TRaw_d,totalSize,"applyBoundaryConditions", t);
 	//std::cout<<"Returned from boundary()\n";
         cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
         if (t % 10 == 0)
