@@ -14,8 +14,6 @@ __device__ float trilinear_sample(const float *field, float x, float y, float z)
     j = max(0, min(j, YDIM - 2));
     k = max(0, min(k, ZDIM - 2));
 
-    int idx = i + j * XDIM + k * XDIM * YDIM;
-
     // Helper lambda for indexing
     auto index = [](int x, int y, int z) {
         return x + y * XDIM + z * XDIM * YDIM;
