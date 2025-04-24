@@ -41,7 +41,7 @@ void InitializeProblem(float (&x)[XDIM][YDIM][ZDIM], float (&y)[XDIM][YDIM][ZDIM
 
 void writetoCSV(float (&x)[XDIM][YDIM][ZDIM], const std::string& filename, const std::string& ftype) {
     std::ofstream file(filename);
-    file << "x,y,z,density\n";
+    file << "x,y,z,"<<ftype<<"\n";
     for (int k = 0; k < ZDIM; ++k)
     for (int j = 0; j < YDIM; ++j)
     for (int i = 0; i < XDIM; ++i) {
