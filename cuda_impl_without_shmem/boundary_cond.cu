@@ -9,8 +9,10 @@ __global__ void applyBoundaryConditionsX(float* u) {
     int k = idx % ZDIM;
 
     if (j < YDIM && k < ZDIM) {
-        int idxStart = 0 * YDIM * ZDIM + j * ZDIM + k;
-        int idxEnd = (XDIM - 1) * YDIM * ZDIM + j * ZDIM + k;
+        int iStart = 0;
+        int iEnd = XDIM - 1;
+        int idxStart = iStart * YDIM * ZDIM + j * ZDIM + k;
+        int idxEnd   = iEnd   * YDIM * ZDIM + j * ZDIM + k;
         u[idxStart] = 0.0f;
         u[idxEnd] = 0.0f;
     }
@@ -23,8 +25,10 @@ __global__ void applyBoundaryConditionsY(float* v) {
     int k = idx % ZDIM;
 
     if (i < XDIM && k < ZDIM) {
-        int idxStart = i * YDIM * ZDIM + 0 * ZDIM + k;
-        int idxEnd = i * YDIM * ZDIM + (YDIM - 1) * ZDIM + k;
+        int jStart = 0;
+        int jEnd = YDIM - 1;
+        int idxStart = i * YDIM * ZDIM + jStart * ZDIM + k;
+        int idxEnd   = i * YDIM * ZDIM + jEnd   * ZDIM + k;
         v[idxStart] = 0.0f;
         v[idxEnd] = 0.0f;
     }
@@ -37,8 +41,10 @@ __global__ void applyBoundaryConditionsZ(float* w) {
     int j = idx % YDIM;
 
     if (i < XDIM && j < YDIM) {
-        int idxStart = i * YDIM * ZDIM + j * ZDIM + 0;
-        int idxEnd = i * YDIM * ZDIM + j * ZDIM + (ZDIM - 1);
+        int kStart = 0;
+        int kEnd = ZDIM - 1;
+        int idxStart = i * YDIM * ZDIM + j * ZDIM + kStart;
+        int idxEnd   = i * YDIM * ZDIM + j * ZDIM + kEnd;
         w[idxStart] = 0.0f;
         w[idxEnd] = 0.0f;
     }

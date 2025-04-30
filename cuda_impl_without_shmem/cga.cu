@@ -74,7 +74,7 @@ __global__ void update_d_kernel(float* d, const float* r, float beta) {
     }
 }
 
-void solvePressureCG(float* d_p, float* d_b) {
+void solvePressureCG_kernel(float* d_p, float* d_b) {
     float *d_r, *d_d, *d_q;
     float *d_dot_new, *d_dq;
     float alpha, beta, delta_new, delta_old;
