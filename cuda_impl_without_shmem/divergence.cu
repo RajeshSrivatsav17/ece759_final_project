@@ -1,7 +1,4 @@
 #include "divergence.h"
-#include "parameters.h"
-
-#define IDX(i, j, k) ((i) * YDIM * ZDIM + (j) * ZDIM + (k))
 
 __global__ void computeDivergence_kernel(const float *u, const float *v, const float *w, float *divergence)
 {
@@ -9,15 +6,26 @@ __global__ void computeDivergence_kernel(const float *u, const float *v, const f
     int totalSize = XDIM * YDIM * ZDIM;
 
     if (idx < totalSize) {
-        int i = idx / (YDIM * ZDIM);          // x-index
-        int j = (idx / ZDIM) % YDIM;          // y-index
-        int k = idx % ZDIM;                   // z-index
+        // For Z-major layout:
+        int x = idx / (YDIM * ZDIM);
+        int y = (idx / ZDIM) % YDIM;
+        int z = idx % ZDIM;
 
-        if (i >= 1 && i < XDIM - 1 && j >= 1 && j < YDIM - 1 && k >= 1 && k < ZDIM - 1) {
-            float du_dx = (u[IDX(i + 1, j, k)] - u[IDX(i - 1, j, k)]) / (2.0f * dx);
-            float dv_dy = (v[IDX(i, j + 1, k)] - v[IDX(i, j - 1, k)]) / (2.0f * dx);
-            float dw_dz = (w[IDX(i, j, k + 1)] - w[IDX(i, j, k - 1)]) / (2.0f * dx);
+        if (x >= 1 && x < XDIM - 1 &&
+            y >= 1 && y < YDIM - 1 &&
+            z >= 1 && z < ZDIM - 1) {
+
+            // Z-major index: z + y * ZDIM + x * YDIM * ZDIM
+            auto index = [](int x, int y, int z) {
+                return z + y * ZDIM + x * YDIM * ZDIM;
+            };
+
+            float du_dx = (u[index(x + 1, y, z)] - u[index(x - 1, y, z)]) / (2.0f * dx);
+            float dv_dy = (v[index(x, y + 1, z)] - v[index(x, y - 1, z)]) / (2.0f * dx);
+            float dw_dz = (w[index(x, y, z + 1)] - w[index(x, y, z - 1)]) / (2.0f * dx);
+
             divergence[idx] = du_dx + dv_dy + dw_dz;
         }
     }
 }
+

@@ -2,70 +2,76 @@
 #include <cuda_runtime.h>
 #include <iostream>
 
-// Kernel to apply boundary conditions on the X boundaries
+// Z-major indexing: z + y * ZDIM + x * YDIM * ZDIM
+
+// Kernel for X boundaries (j, k loop flattened)
 __global__ void applyBoundaryConditionsX(float* u) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = idx / ZDIM;
-    int k = idx % ZDIM;
+    int total = YDIM * ZDIM;
 
-    if (j < YDIM && k < ZDIM) {
-        int iStart = 0;
-        int iEnd = XDIM - 1;
-        int idxStart = iStart * YDIM * ZDIM + j * ZDIM + k;
-        int idxEnd   = iEnd   * YDIM * ZDIM + j * ZDIM + k;
+    if (idx < total) {
+        int j = idx / ZDIM;
+        int k = idx % ZDIM;
+
+        int idxStart = k + j * ZDIM + 0 * YDIM * ZDIM;
+        int idxEnd   = k + j * ZDIM + (XDIM - 1) * YDIM * ZDIM;
+
         u[idxStart] = 0.0f;
-        u[idxEnd] = 0.0f;
+        u[idxEnd]   = 0.0f;
     }
 }
 
-// Kernel to apply boundary conditions on the Y boundaries
+// Kernel for Y boundaries (i, k loop flattened)
 __global__ void applyBoundaryConditionsY(float* v) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int i = idx / ZDIM;
-    int k = idx % ZDIM;
+    int total = XDIM * ZDIM;
 
-    if (i < XDIM && k < ZDIM) {
-        int jStart = 0;
-        int jEnd = YDIM - 1;
-        int idxStart = i * YDIM * ZDIM + jStart * ZDIM + k;
-        int idxEnd   = i * YDIM * ZDIM + jEnd   * ZDIM + k;
+    if (idx < total) {
+        int i = idx / ZDIM;
+        int k = idx % ZDIM;
+
+        int idxStart = k + 0 * ZDIM + i * YDIM * ZDIM;
+        int idxEnd   = k + (YDIM - 1) * ZDIM + i * YDIM * ZDIM;
+
         v[idxStart] = 0.0f;
-        v[idxEnd] = 0.0f;
+        v[idxEnd]   = 0.0f;
     }
 }
 
-// Kernel to apply boundary conditions on the Z boundaries
+// Kernel for Z boundaries (i, j loop flattened)
 __global__ void applyBoundaryConditionsZ(float* w) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int i = idx / YDIM;
-    int j = idx % YDIM;
+    int total = XDIM * YDIM;
 
-    if (i < XDIM && j < YDIM) {
-        int kStart = 0;
-        int kEnd = ZDIM - 1;
-        int idxStart = i * YDIM * ZDIM + j * ZDIM + kStart;
-        int idxEnd   = i * YDIM * ZDIM + j * ZDIM + kEnd;
+    if (idx < total) {
+        int i = idx / YDIM;
+        int j = idx % YDIM;
+
+        int idxStart = 0 + j * ZDIM + i * YDIM * ZDIM;
+        int idxEnd   = (ZDIM - 1) + j * ZDIM + i * YDIM * ZDIM;
+
         w[idxStart] = 0.0f;
-        w[idxEnd] = 0.0f;
+        w[idxEnd]   = 0.0f;
     }
 }
 
-// Host function to call the CUDA kernels
-void applyBoundaryConditions_kernel(float* u, float* v, float* w) {
-    int blockSize = 256;
+void applyBoundaryConditions(float* u, float* v, float* w) {
+    int blockSize = BLOCK_SIZE;
+    int totalX = YDIM * ZDIM;
+    int totalY = XDIM * ZDIM;
+    int totalZ = XDIM * YDIM;
 
-    // For X boundary (j, k): total threads = YDIM * ZDIM
-    int gridSizeX = (YDIM * ZDIM + blockSize - 1) / blockSize;
-    applyBoundaryConditionsX<<<gridSizeX, blockSize>>>(u);
+    int gridX = (totalX + blockSize - 1) / blockSize;
+    int gridY = (totalY + blockSize - 1) / blockSize;
+    int gridZ = (totalZ + blockSize - 1) / blockSize;
+
+    applyBoundaryConditionsX<<<gridX, blockSize>>>(u);
     cudaDeviceSynchronize();
 
-    // For Y boundary (i, k): total threads = XDIM * ZDIM
-    int gridSizeY = (XDIM * ZDIM + blockSize - 1) / blockSize;
-    applyBoundaryConditionsY<<<gridSizeY, blockSize>>>(v);
+    applyBoundaryConditionsY<<<gridY, blockSize>>>(v);
     cudaDeviceSynchronize();
 
-    // For Z boundary (i, j): total threads = XDIM * YDIM
-    int gridSizeZ = (XDIM * YDIM + blockSize - 1) / blockSize;
-    applyBoundaryConditionsZ<<<gridSizeZ, blockSize>>>(w);
+    applyBoundaryConditionsZ<<<gridZ, blockSize>>>(w);
     cudaDeviceSynchronize();
 }
+

@@ -29,8 +29,8 @@ void InitializeProblem(float (&x)[XDIM][YDIM][ZDIM], float (&y)[XDIM][YDIM][ZDIM
     int Z_initial_val = ceil(0.06*ZDIM);
     int Z_limit = ceil(0.12*ZDIM);
     for(int k = Z_initial_val; k < Z_limit; ++k)
-        for(int j = YDIM/2-16; j < YDIM/2+16; j++)
-        for(int i = XDIM/2-16; i < XDIM/2+16; i++){ //6% to 12% Near the bottom of the domain
+        for(int j = YDIM/2-YDIM/4; j < YDIM/2+YDIM/4; j++)
+        for(int i = XDIM/2-YDIM/4; i < XDIM/2+YDIM/4; i++){ //6% to 12% Near the bottom of the domain
             x[i][j][k] = 1.; //Density
             y[i][j][k] = 300.; //Temperature 
             z[i][j][k] = 2.0f;

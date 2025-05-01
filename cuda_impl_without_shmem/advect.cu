@@ -14,15 +14,20 @@ __device__ float trilinear_sample(const float *field, float x, float y, float z)
     j = max(0, min(j, YDIM - 2));
     k = max(0, min(k, ZDIM - 2));
 
-    float c000 = field[i * YDIM * ZDIM + j * ZDIM + k];
-    float c100 = field[(i+1) * YDIM * ZDIM + j * ZDIM + k];
-    float c010 = field[i * YDIM * ZDIM + (j+1) * ZDIM + k];
-    float c110 = field[(i+1) * YDIM * ZDIM + (j+1) * ZDIM + k];
-    float c001 = field[i * YDIM * ZDIM + j * ZDIM + (k+1)];
-    float c101 = field[(i+1) * YDIM * ZDIM + j * ZDIM + (k+1)];
-    float c011 = field[i * YDIM * ZDIM + (j+1) * ZDIM + (k+1)];
-    float c111 = field[(i+1) * YDIM * ZDIM + (j+1) * ZDIM + (k+1)];
-    
+    // Updated indexing function: z + y * ZDIM + x * YDIM * ZDIM
+    auto index = [](int x, int y, int z) {
+        return z + y * ZDIM + x * YDIM * ZDIM;
+    };
+
+    float c000 = field[index(i,   j,   k)];
+    float c100 = field[index(i+1, j,   k)];
+    float c010 = field[index(i,   j+1, k)];
+    float c110 = field[index(i+1, j+1, k)];
+    float c001 = field[index(i,   j,   k+1)];
+    float c101 = field[index(i+1, j,   k+1)];
+    float c011 = field[index(i,   j+1, k+1)];
+    float c111 = field[index(i+1, j+1, k+1)];
+
     float c00 = c000 * (1 - tx) + c100 * tx;
     float c10 = c010 * (1 - tx) + c110 * tx;
     float c01 = c001 * (1 - tx) + c101 * tx;
@@ -34,14 +39,19 @@ __device__ float trilinear_sample(const float *field, float x, float y, float z)
     return c0 * (1 - tz) + c1 * tz;
 }
 
-__global__ void semi_lagrangian_advection_kernel(float *dst, const float *src, const float *u, const float *v, const float *w, float dt) {
+__global__ void semi_lagrangian_advection_kernel(
+    float *dst, const float *src, 
+    const float *u, const float *v, const float *w, 
+    float dt
+) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     int totalSize = XDIM * YDIM * ZDIM;
 
     if (idx < totalSize) {
-        int x = idx / (YDIM * ZDIM);              // x index
-        int y = (idx / ZDIM) % YDIM;              // y index
-        int z = idx % ZDIM;                       // z index
+        // Inverse index: x = idx / (YDIM * ZDIM), etc.
+        int x = idx / (YDIM * ZDIM);
+        int y = (idx / ZDIM) % YDIM;
+        int z = idx % ZDIM;
 
         float xf = x - dt * u[idx];
         float yf = y - dt * v[idx];
@@ -54,3 +64,4 @@ __global__ void semi_lagrangian_advection_kernel(float *dst, const float *src, c
         dst[idx] = trilinear_sample(src, xf, yf, zf);
     }
 }
+
