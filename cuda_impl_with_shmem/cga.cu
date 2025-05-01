@@ -1,135 +1,134 @@
-#include <cooperative_groups.h>
-namespace cg = cooperative_groups;
+#include <cuda_runtime.h>
+#include <iostream>
+#include "parameters.h"
 
-__global__ void cg_pressure_solver_flat(
-    float* p, const float* b, float dx, int N, int maxIters, float tolerance)
-{
-    extern __shared__ float shared[];
+#define IDX(i, j, k) ((k) + (j) * ZDIM + (i) * YDIM * ZDIM)
+#define LOCAL_IDX(i, j, k) ((k) + (j) * (Z + 2) + (i) * (Y + 2) * (Z + 2))
 
-    float* r = shared;                   // [0, N)
-    float* d = &shared[N];               // [N, 2N)
-    float* q = &shared[2 * N];           // [2N, 3N)
+__global__ void solve_pressure_cg_flat(float* p, const float* b, float dx) {
+    constexpr int X = 8;  // tile sizes
+    constexpr int Y = 8;
+    constexpr int Z = 8;
 
-    cg::grid_group grid = cg::this_grid();
+    __shared__ float s_d[(X + 2) * (Y + 2) * (Z + 2)];
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.x * X + threadIdx.x;
+    int j = blockIdx.y * Y + threadIdx.y;
+    int k = blockIdx.z * Z + threadIdx.z;
 
-    float delta_new = 0.0f;
+    int tx = threadIdx.x + 1;
+    int ty = threadIdx.y + 1;
+    int tz = threadIdx.z + 1;
 
-    if (idx < N) {
-        p[idx] = 0.0f;
-        r[idx] = b[idx];
-        d[idx] = r[idx];
+    int N = XDIM * YDIM * ZDIM;
+
+    int index = IDX(i, j, k);
+    int local_index = LOCAL_IDX(tx, ty, tz);
+
+    float r = 0.0f, d = 0.0f, q = 0.0f;
+    float alpha = 0.0f, beta = 0.0f;
+    float delta_new = 0.0f, delta_old = 0.0f;
+    float dq = 0.0f;
+
+    if (i < XDIM && j < YDIM && k < ZDIM) {
+        p[index] = 0.0f;
+        r = b[index];
+        d = r;
     }
-    __syncthreads();
 
-    // Initial delta_new = dot(r, r)
-    float local_dot = 0.0f;
-    if (idx < N) local_dot = r[idx] * r[idx];
+    for (int iter = 0; iter < 100; ++iter) {
+        // --- Load with halo into shared memory
+        if (i < XDIM && j < YDIM && k < ZDIM)
+            s_d[local_index] = d;
 
-    for (int offset = warpSize / 2; offset > 0; offset /= 2)
-        local_dot += __shfl_down_sync(0xffffffff, local_dot, offset);
-    
-    static __shared__ float global_dot;
-    if (threadIdx.x % warpSize == 0)
-        atomicAdd(&global_dot, local_dot);
-    __syncthreads();
+        // halo boundaries
+        if (threadIdx.x == 0 && i > 0)       s_d[LOCAL_IDX(0, ty, tz)]     = d;  // -x
+        if (threadIdx.x == X - 1 && i < XDIM - 1) s_d[LOCAL_IDX(X + 1, ty, tz)] = d;  // +x
+        if (threadIdx.y == 0 && j > 0)       s_d[LOCAL_IDX(tx, 0, tz)]     = d;  // -y
+        if (threadIdx.y == Y - 1 && j < YDIM - 1) s_d[LOCAL_IDX(tx, Y + 1, tz)] = d;  // +y
+        if (threadIdx.z == 0 && k > 0)       s_d[LOCAL_IDX(tx, ty, 0)]     = d;  // -z
+        if (threadIdx.z == Z - 1 && k < ZDIM - 1) s_d[LOCAL_IDX(tx, ty, Z + 1)] = d;  // +z
 
-    if (threadIdx.x == 0) delta_new = global_dot;
-    __syncthreads();
-    delta_new = global_dot;
-
-    float delta_old;
-
-    for (int iter = 0; iter < maxIters && delta_new > tolerance * tolerance; ++iter) {
-        if (threadIdx.x == 0) global_dot = 0.0f;
         __syncthreads();
 
-        // q = Laplacian(d)
-        if (idx < N) {
-            int i = idx / (YDIM * ZDIM);
-            int j = (idx / ZDIM) % YDIM;
-            int k = idx % ZDIM;
+        // --- Laplacian
+        if (i < XDIM && j < YDIM && k < ZDIM) {
+            float center = s_d[local_index];
+            float sum =
+                s_d[LOCAL_IDX(tx - 1, ty, tz)] +
+                s_d[LOCAL_IDX(tx + 1, ty, tz)] +
+                s_d[LOCAL_IDX(tx, ty - 1, tz)] +
+                s_d[LOCAL_IDX(tx, ty + 1, tz)] +
+                s_d[LOCAL_IDX(tx, ty, tz - 1)] +
+                s_d[LOCAL_IDX(tx, ty, tz + 1)];
 
-            float center = d[idx];
-            float sum = 0.0f;
-
-            if (i > 0)        sum += d[IDX(i - 1, j, k)];
-            if (i < XDIM - 1) sum += d[IDX(i + 1, j, k)];
-            if (j > 0)        sum += d[IDX(i, j - 1, k)];
-            if (j < YDIM - 1) sum += d[IDX(i, j + 1, k)];
-            if (k > 0)        sum += d[IDX(i, j, k - 1)];
-            if (k < ZDIM - 1) sum += d[IDX(i, j, k + 1)];
-
-            q[idx] = (sum - 6.0f * center) / (dx * dx);
+            q = (sum - 6.0f * center) / (dx * dx);
         }
+
         __syncthreads();
 
-        // dq = dot(d, q)
-        float dq_local = 0.0f;
-        if (idx < N) dq_local = d[idx] * q[idx];
+        // --- Dot products (simplified, single block only)
+        float local_rr = r * r;
+        float local_dq = d * q;
 
-        for (int offset = warpSize / 2; offset > 0; offset /= 2)
-            dq_local += __shfl_down_sync(0xffffffff, dq_local, offset);
+        atomicAdd(&delta_new, local_rr);
+        atomicAdd(&dq, local_dq);
 
-        if (threadIdx.x % warpSize == 0)
-            atomicAdd(&global_dot, dq_local);
         __syncthreads();
 
-        float dq = global_dot;
-        float alpha = delta_new / dq;
+        alpha = delta_new / dq;
 
-        // Update p and r
-        if (idx < N) {
-            p[idx] += alpha * d[idx];
-            r[idx] -= alpha * q[idx];
+        if (i < XDIM && j < YDIM && k < ZDIM) {
+            p[index] += alpha * d;
+            r -= alpha * q;
         }
-        __syncthreads();
 
-        if (threadIdx.x == 0) global_dot = 0.0f;
-        __syncthreads();
-
-        // delta_old = delta_new
         delta_old = delta_new;
+        delta_new = 0.0f;
 
-        // delta_new = dot(r, r)
-        float dot_local = 0.0f;
-        if (idx < N) dot_local = r[idx] * r[idx];
+        float r2 = r * r;
+        atomicAdd(&delta_new, r2);
 
-        for (int offset = warpSize / 2; offset > 0; offset /= 2)
-            dot_local += __shfl_down_sync(0xffffffff, dot_local, offset);
-
-        if (threadIdx.x % warpSize == 0)
-            atomicAdd(&global_dot, dot_local);
         __syncthreads();
+        beta = delta_new / delta_old;
 
-        delta_new = global_dot;
-
-        // beta = delta_new / delta_old
-        float beta = delta_new / delta_old;
-
-        // Update d = r + beta * d
-        if (idx < N) {
-            d[idx] = r[idx] + beta * d[idx];
+        if (i < XDIM && j < YDIM && k < ZDIM) {
+            d = r + beta * d;
         }
+
+        if (sqrtf(delta_new) < 1e-5f)
+            break;
+
         __syncthreads();
     }
+
+    if (i < XDIM && j < YDIM && k < ZDIM)
+        p[index] = p[index]; // store back result
 }
 
-void solvePressureCG(float* d_p, float* d_b) {
+void solvePressureCG(float* d_p, float* d_b, float dx) {
     int N = XDIM * YDIM * ZDIM;
     int maxIters = 100;
     float tolerance = 1e-5f;
 
-    dim3 blockSize(256);
-    dim3 gridSize((N + blockSize.x - 1) / blockSize.x);
+    dim3 blockSize(8, 8, 8);  // Matches kernel's tile size
+    dim3 gridSize((XDIM + blockSize.x - 1) / blockSize.x, 
+                  (YDIM + blockSize.y - 1) / blockSize.y, 
+                  (ZDIM + blockSize.z - 1) / blockSize.z);
 
-    size_t sharedMemSize = 3 * N * sizeof(float);  // r, d, q
+    // Shared memory size based on block dimensions
+    size_t sharedMemSize = (blockSize.x + 2) * (blockSize.y + 2) * (blockSize.z + 2) * sizeof(float);
 
-    void* args[] = { &d_p, &d_b, &dx, &N, &maxIters, &tolerance };
+    // Kernel arguments
+    void* args[] = { &d_p, &d_b, &dx };
 
-    cudaLaunchCooperativeKernel(
-        (void*)cg_pressure_solver_flat, gridSize, blockSize, args, sharedMemSize);
+    // Launch the kernel
+    solve_pressure_cg_flat<<<gridSize, blockSize, sharedMemSize>>>(d_p, d_b, dx);
+
+    // Check for errors
+    cudaDeviceSynchronize();
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA error: " << cudaGetErrorString(error) << std::endl;
+    }
 }
-
-
