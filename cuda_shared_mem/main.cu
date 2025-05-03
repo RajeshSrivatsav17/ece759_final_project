@@ -2,7 +2,7 @@
 #include <vector>
 #include <cmath>
 #include "parameters.h"
-#include "utilities.cu"
+#include "utilities.h"
 #include "buoyantforce.h"
 #include "advect.h"
 #include "divergence.h"
@@ -30,6 +30,8 @@ int main() {
 
     // Device memory allocation
     float *uRaw_d, *vRaw_d, *wRaw_d, *rhoRaw_d, *TRaw_d, *divergenceRaw_d, *pRaw_d;
+    float *uRaw_star_d, *vRaw_star_d, *wRaw_star_d, *rhoRaw_next_d, *TRaw_next_d;
+
     cudaMalloc((void**)&uRaw_d, totalSize * sizeof(float));
     cudaMalloc((void**)&vRaw_d, totalSize * sizeof(float));
     cudaMalloc((void**)&wRaw_d, totalSize * sizeof(float));
@@ -37,17 +39,21 @@ int main() {
     cudaMalloc((void**)&TRaw_d, totalSize * sizeof(float));
     cudaMalloc((void**)&divergenceRaw_d, totalSize * sizeof(float));
     cudaMalloc((void**)&pRaw_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&uRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&vRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&wRaw_star_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&rhoRaw_next_d, totalSize * sizeof(float));
+    cudaMalloc((void**)&TRaw_next_d, totalSize * sizeof(float));
 
     // Initialize fields
-// Initialize fields
-Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*uRaw));
-Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
-Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*wRaw));
-Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw));
-Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw));
-InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
-                  reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw),
-                  reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
+    Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*uRaw));
+    Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
+    Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*wRaw));
+    Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw));
+    Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw));
+    InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
+                      reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw),
+                      reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
 
     // Copy initialized fields to device
     cudaMemcpy(uRaw_d, uRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
@@ -72,13 +78,22 @@ InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(rhoRaw_d, TRaw_d, vRaw_d);
 
         // Step 2: Advect velocity
-        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
-        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(vRaw_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
-        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(wRaw_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_star_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(vRaw_star_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(wRaw_star_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+
+        // Swap velocity buffers
+        std::swap(uRaw_d, uRaw_star_d);
+        std::swap(vRaw_d, vRaw_star_d);
+        std::swap(wRaw_d, wRaw_star_d);
 
         // Step 3: Advect smoke density and temperature
-        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(rhoRaw_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
-        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(TRaw_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(rhoRaw_next_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(TRaw_next_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+
+        // Swap density and temperature buffers
+        std::swap(rhoRaw_d, rhoRaw_next_d);
+        std::swap(TRaw_d, TRaw_next_d);
 
         // Step 4: Compute divergence
         computeDivergence_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_d, vRaw_d, wRaw_d, divergenceRaw_d);
@@ -102,13 +117,6 @@ InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
             writetoCSV(rhoRaw, "density_frame_" + std::to_string(t) + ".csv", "density");
         }
-
-//         if (t % 10 == 0 && RESULT) {
-//             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
-//             writetoCSV(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw), 
-//                "density_frame_" + std::to_string(t) + ".csv", 
-//                "density");
-// }
     }
 
     // Cleanup
@@ -127,6 +135,11 @@ InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
     cudaFree(TRaw_d);
     cudaFree(divergenceRaw_d);
     cudaFree(pRaw_d);
+    cudaFree(uRaw_star_d);
+    cudaFree(vRaw_star_d);
+    cudaFree(wRaw_star_d);
+    cudaFree(rhoRaw_next_d);
+    cudaFree(TRaw_next_d);
 
     cudaEventDestroy(startEvent);
     cudaEventDestroy(stopEvent);
