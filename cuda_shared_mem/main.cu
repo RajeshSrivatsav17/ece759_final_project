@@ -38,12 +38,15 @@ int main() {
     cudaMalloc((void**)&pRaw_d, totalSize * sizeof(float));
 
     // Initialize fields
-    Clear(uRaw, totalSize);
-    Clear(vRaw, totalSize);
-    Clear(wRaw, totalSize);
-    Clear(rhoRaw, totalSize);
-    Clear(TRaw, totalSize);
-    InitializeProblem(rhoRaw, TRaw, vRaw);
+// Initialize fields
+Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*uRaw));
+Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
+Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*wRaw));
+Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw));
+Clear(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw));
+InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
+                  reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*TRaw),
+                  reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*vRaw));
 
     // Copy initialized fields to device
     cudaMemcpy(uRaw_d, uRaw, totalSize * sizeof(float), cudaMemcpyHostToDevice);
