@@ -9,6 +9,7 @@
 #include "cga.cuh"
 #include "boundary_cond.h"
 #include "velocity_correction.h"
+#include "cpu_functions.h"
 
 int main() {
     // CUDA events for timing
@@ -101,6 +102,13 @@ InitializeProblem(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw),
             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
             writetoCSV(rhoRaw, "density_frame_" + std::to_string(t) + ".csv", "density");
         }
+
+//         if (t % 10 == 0 && RESULT) {
+//             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
+//             writetoCSV(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw), 
+//                "density_frame_" + std::to_string(t) + ".csv", 
+//                "density");
+// }
     }
 
     // Cleanup
