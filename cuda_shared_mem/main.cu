@@ -78,8 +78,6 @@ int main() {
     // Variable to accumulate elapsed time
     float totalElapsedTime = 0.0f;
 
-// Variable to accumulate elapsed time
-float totalElapsedTime = 0.0f;
 
     // Main simulation loop
     for (int t = 0; t < TOTAL_STEPS; ++t) {
