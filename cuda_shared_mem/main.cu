@@ -123,7 +123,7 @@ int main() {
         // Calculate elapsed time for this step
         float elapsedTime;
         cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
-        totalElapsedTime += elapsedTime / 1000.0f; // Accumulate elapsed time in seconds
+        totalElapsedTime += elapsedTime; // Accumulate elapsed time in seconds
 
         // Optional: Output results every 10 steps
         if (t % 10 == 0 && RESULT) {
@@ -137,7 +137,7 @@ int main() {
     cudaEventSynchronize(totalStopEvent);
 
     // Print total accumulated elapsed time
-    std::cout << "Total accumulated simulation time: " << totalElapsedTime << " seconds" << std::endl;
+    std::cout << "Total accumulated simulation time: " << totalElapsedTime << "ms seconds" << std::endl;
 
     // Cleanup
     delete[] uRaw;
