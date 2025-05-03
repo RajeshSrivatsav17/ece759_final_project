@@ -78,17 +78,42 @@ int main() {
     // Variable to accumulate elapsed time
     float totalElapsedTime = 0.0f;
 
+// Variable to accumulate elapsed time
+float totalElapsedTime = 0.0f;
+
     // Main simulation loop
     for (int t = 0; t < TOTAL_STEPS; ++t) {
         cudaEventRecord(startEvent, 0);
 
         // Step 1: Apply buoyant force
         buoyantforce_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(rhoRaw_d, TRaw_d, vRaw_d);
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after buoyantforce_kernel: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Step 2: Advect velocity
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_star_d, uRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after semi_lagrangian_advection_kernel (u): " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(vRaw_star_d, vRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after semi_lagrangian_advection_kernel (v): " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(wRaw_star_d, wRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after semi_lagrangian_advection_kernel (w): " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Swap velocity buffers
         std::swap(uRaw_d, uRaw_star_d);
@@ -97,7 +122,18 @@ int main() {
 
         // Step 3: Advect smoke density and temperature
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(rhoRaw_next_d, rhoRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after semi_lagrangian_advection_kernel (rho): " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+
         semi_lagrangian_advection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(TRaw_next_d, TRaw_d, uRaw_d, vRaw_d, wRaw_d, dt);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after semi_lagrangian_advection_kernel (T): " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Swap density and temperature buffers
         std::swap(rhoRaw_d, rhoRaw_next_d);
@@ -105,17 +141,49 @@ int main() {
 
         // Step 4: Compute divergence
         computeDivergence_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_d, vRaw_d, wRaw_d, divergenceRaw_d);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after computeDivergence_kernel: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Step 5: Solve pressure using Conjugate Gradient
         cg_pressure_solver_flat<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(pRaw_d, divergenceRaw_d, dx, totalSize, cg_max_iterations, cg_tolerance);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after cg_pressure_solver_flat: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Step 6: Correct velocity
         velocityCorrection_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(uRaw_d, vRaw_d, wRaw_d, pRaw_d);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after velocityCorrection_kernel: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         // Step 7: Apply boundary conditions
         applyBoundaryConditionsX<<<(YDIM * ZDIM + 255) / 256, 256>>>(uRaw_d);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after applyBoundaryConditionsX: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+
         applyBoundaryConditionsY<<<(XDIM * ZDIM + 255) / 256, 256>>>(vRaw_d);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after applyBoundaryConditionsY: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+
         applyBoundaryConditionsZ<<<(XDIM * YDIM + 255) / 256, 256>>>(wRaw_d);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA Error after applyBoundaryConditionsZ: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
 
         cudaEventRecord(stopEvent, 0);
         cudaEventSynchronize(stopEvent);
@@ -123,9 +191,8 @@ int main() {
         // Calculate elapsed time for this step
         float elapsedTime;
         cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
-        totalElapsedTime += elapsedTime; // Accumulate elapsed time in seconds
+        totalElapsedTime += elapsedTime / 1000.0f; // Accumulate elapsed time in seconds
 
-        // Optional: Output results every 10 steps
         if (t % 10 == 0 && RESULT) {
             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
             writetoCSV(rhoRaw, "density_frame_" + std::to_string(t) + ".csv", "density");
