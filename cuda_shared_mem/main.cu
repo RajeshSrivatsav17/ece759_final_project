@@ -2,7 +2,7 @@
 #include <vector>
 #include <cmath>
 #include "parameters.h"
-#include "utilities.h"
+#include "utilities.cuh"
 #include "buoyantforce.h"
 #include "advect.h"
 #include "divergence.h"
@@ -13,9 +13,11 @@
 
 int main() {
     // CUDA events for timing
-    cudaEvent_t startEvent, stopEvent;
+    cudaEvent_t startEvent, stopEvent, totalStartEvent, totalStopEvent;
     cudaEventCreate(&startEvent);
     cudaEventCreate(&stopEvent);
+    cudaEventCreate(&totalStartEvent);
+    cudaEventCreate(&totalStopEvent);
 
     size_t totalSize = XDIM * YDIM * ZDIM;
 
@@ -70,6 +72,12 @@ int main() {
 
     size_t sharedMemSize = BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE * sizeof(float);
 
+    // Start total simulation timer
+    cudaEventRecord(totalStartEvent, 0);
+
+    // Variable to accumulate elapsed time
+    float totalElapsedTime = 0.0f;
+
     // Main simulation loop
     for (int t = 0; t < TOTAL_STEPS; ++t) {
         cudaEventRecord(startEvent, 0);
@@ -112,12 +120,26 @@ int main() {
         cudaEventRecord(stopEvent, 0);
         cudaEventSynchronize(stopEvent);
 
+        // Calculate elapsed time for this step
+        float elapsedTime;
+        cudaEventElapsedTime(&elapsedTime, startEvent, stopEvent);
+        totalElapsedTime += elapsedTime / 1000.0f; // Accumulate elapsed time in seconds
+
         // Optional: Output results every 10 steps
         if (t % 10 == 0 && RESULT) {
             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
-            writetoCSV(rhoRaw, "density_frame_" + std::to_string(t) + ".csv", "density");
+            writetoCSV(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw), 
+                       "density_frame_" + std::to_string(t) + ".csv", 
+                       "density");
         }
     }
+
+    // Stop total simulation timer
+    cudaEventRecord(totalStopEvent, 0);
+    cudaEventSynchronize(totalStopEvent);
+
+    // Print total accumulated elapsed time
+    std::cout << "Total accumulated simulation time (excluding CSV writes): " << totalElapsedTime << " seconds" << std::endl;
 
     // Cleanup
     delete[] uRaw;
@@ -143,6 +165,8 @@ int main() {
 
     cudaEventDestroy(startEvent);
     cudaEventDestroy(stopEvent);
+    cudaEventDestroy(totalStartEvent);
+    cudaEventDestroy(totalStopEvent);
 
     cudaDeviceReset();
     return 0;
