@@ -2,7 +2,7 @@
 #include <vector>
 #include <cmath>
 #include "parameters.h"
-#include "utilities.cuh"
+#include "utilities.h"
 #include "buoyantforce.h"
 #include "advect.h"
 #include "divergence.h"
@@ -128,9 +128,7 @@ int main() {
         // Optional: Output results every 10 steps
         if (t % 10 == 0 && RESULT) {
             cudaMemcpy(rhoRaw, rhoRaw_d, totalSize * sizeof(float), cudaMemcpyDeviceToHost);
-            writetoCSV(reinterpret_cast<float (&)[XDIM][YDIM][ZDIM]>(*rhoRaw), 
-                       "density_frame_" + std::to_string(t) + ".csv", 
-                       "density");
+            writetoCSV(rhoRaw, "density_frame_" + std::to_string(t) + ".csv", "density");
         }
     }
 
@@ -139,7 +137,7 @@ int main() {
     cudaEventSynchronize(totalStopEvent);
 
     // Print total accumulated elapsed time
-    std::cout << "Total accumulated simulation time (excluding CSV writes): " << totalElapsedTime << " seconds" << std::endl;
+    std::cout << "Total accumulated simulation time: " << totalElapsedTime << " seconds" << std::endl;
 
     // Cleanup
     delete[] uRaw;
